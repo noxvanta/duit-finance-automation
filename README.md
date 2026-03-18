@@ -15,8 +15,7 @@
 - **AI Integration:** [Sebutkan model yang kamu pakai, misal: Gemini / Groq].
 
 ## 📸 Workflow Preview
-![Workflow Screenshot](<img width="960" height="456" alt="image" src="https://github.com/user-attachments/assets/8fefa737-2616-442f-b02e-e2850f8017d1" />
-)
+![Workflow Screenshot](<Screenshot 2026-03-18 191926.jpg>)
 
 ---
 *Created by Bintang - High School Tech Enthusiast*
