@@ -14,7 +14,7 @@
 - **AI Integration:** Gemini dan Groq.
 
 ## 📸 Workflow Preview
-![Workflow Screenshot](link-foto-kamu-disini)
+![Workflow Screenshot](workflow-duit.jpg)
 
 ---
 *Created by Bintang - High School Tech Enthusiast*
