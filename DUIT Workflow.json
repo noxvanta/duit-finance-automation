@@ -1,0 +1,1505 @@
+{
+  "name": "DUIT Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message",
+          "edited_message"
+        ],
+        "additionalFields": {
+          "download": true
+        }
+      },
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        640,
+        -752
+      ],
+      "id": "72fb680f-3b2b-4c71-baa0-125d4d1a38e7",
+      "name": "Telegram Trigger",
+      "webhookId": "20ee42d4-ceb7-4e77-b4c7-df177f916481",
+      "credentials": {
+        "telegramApi": {
+          "id": "bfmnvC26T7nYafSH",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1. Ambil data dari node AI Agent\nconst inputItem = $input.first();\nlet rawData = inputItem.json?.output || inputItem.json?.text || inputItem.json?.content || \"\";\nconst aiResponse = String(rawData);\n\n// Mencari pola array JSON [ ... ] di dalam teks (karena AI sering memberi teks tambahan)\nconst jsonRegex = /\\[[\\s\\S]*\\]/;\nconst match = aiResponse.match(jsonRegex);\nlet cleanJson = \"\";\n\nif (match) {\n    cleanJson = match[0].trim();\n} else {\n    cleanJson = aiResponse.replace(/```json/g, \"\").replace(/```/g, \"\").trim();\n}\n\nlet dataList = [];\nlet replyMessage = \"\";\n\ntry {\n    // 2. Parsing JSON dari AI\n    const parsed = JSON.parse(cleanJson);\n    dataList = Array.isArray(parsed) ? parsed : [parsed];\n\n    // Persiapkan Waktu Indonesia (WIB)\n    const now = new Date();\n    const wibTime = new Date(now.getTime() + (7 * 60 * 60 * 1000));\n    const tanggalDefault = wibTime.toISOString().split('T')[0]; \n    const waktuDefault = wibTime.toISOString().split('T')[1].substring(0, 8); \n\n    // 3. MAPPING DATA\n    const processedData = dataList.map(item => {\n        // Sanitasi Harga: Menghapus karakter non-angka\n        let val = item.Harga ?? item.harga ?? item.Jumlah ?? item.jumlah ?? \"0\";\n        let hargaMentah = val.toString().replace(/\\D/g, '');\n        let harga = parseInt(hargaMentah) || 0;\n\n        let tgl = item.Tanggal || item.tanggal || tanggalDefault;\n        let wkt = item.Waktu || item.waktu || waktuDefault;\n        let namaItem = item.Keterangan || item.keterangan || \"Tanpa Keterangan\";\n        let kategori = item.Kategori || item.kategori || \"Lainnya\";\n        let jenis = item.Jenis || item.jenis || \"Pengeluaran\";\n        \n        // Deteksi Aksi (insert/update/delete)\n        let aksi = item.aksi || \"insert\"; \n\n        // Setel Emoji dan Status Teks berdasarkan aksi\n        let statusEmoji = \"📌\";\n        let statusTeks = \"\";\n        \n        if (aksi === \"delete\") {\n            statusEmoji = \"🗑️\";\n            statusTeks = \"DIHAPUS\";\n        } else if (aksi === \"update\") {\n            statusEmoji = \"🔄\";\n            statusTeks = \"DIPERBARUI\";\n        }\n\n        return {\n            aksi: aksi,\n            tanggal: tgl,\n            waktu: wkt,\n            keterangan: namaItem,\n            kategori: kategori,\n            jenis: jenis,\n            harga: harga,\n            update_target: item.update_target ?? namaItem, \n            formatted_text: `\\n${statusEmoji} *${namaItem}* ${statusTeks} (${kategori})\\n💰 Rp ${harga.toLocaleString('id-ID')}`\n        };\n    });\n\n    // 4. SUSUN PESAN BALASAN\n    if (processedData.length > 0) {\n        replyMessage = \"✅ *DATA TERCATAT!*\";\n        \n        // Tambahkan rincian barang\n        processedData.forEach(d => { \n            replyMessage += d.formatted_text; \n        });\n\n        // LOGIKA TOTAL: Hanya muncul jika item lebih dari satu (Multi-item)\n        if (processedData.length > 1) {\n            const total = processedData.reduce((sum, d) => sum + d.harga, 0);\n            replyMessage += `\\n\\n──────────────\\n💵 *TOTAL: Rp ${total.toLocaleString('id-ID')}*`;\n        }\n    }\n\n    return {\n        json: {\n            reply_message: replyMessage,\n            sheet_data: processedData, \n            chat_id: inputItem.json?.chat_id || inputItem.json?.message?.chat?.id\n        }\n    };\n\n} catch (error) {\n    // Jika AI hanya mengirim teks (curhat), kirim apa adanya tanpa memproses JSON\n    return {\n        json: {\n            reply_message: aiResponse, \n            sheet_data: [], \n            chat_id: inputItem.json?.chat_id || inputItem.json?.message?.chat?.id\n        }\n    };\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        128
+      ],
+      "id": "0cdea6e8-9302-463e-a7fd-05644cac398b",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').first().json.message.chat.id }}",
+        "text": "={{ $json.reply_message }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1056,
+        80
+      ],
+      "id": "ad92f395-d2f0-4473-bfbd-6497df8338fb",
+      "name": "Send a text message",
+      "webhookId": "89bedc92-c515-41e0-bc68-20227e74707a",
+      "credentials": {
+        "telegramApi": {
+          "id": "bfmnvC26T7nYafSH",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $node[\"Get a row\"].json[\"spreadsheet_id\"] }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1LVElxMSeWXDMHqs1ACHybvaV_ceuBmVSYp9yCq_ntOo/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Tanggal": "={{ $json.tanggal }}",
+            "Waktu": "={{ $json.waktu }}",
+            "Keterangan": "={{ $json.keterangan }}",
+            "Kategori": "={{ $json.kategori }}",
+            "Jenis": "={{ $json.jenis }}",
+            "Harga": "={{ $json.harga }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "No",
+              "displayName": "No",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Tanggal",
+              "displayName": "Tanggal",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Waktu",
+              "displayName": "Waktu",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Keterangan",
+              "displayName": "Keterangan",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Kategori",
+              "displayName": "Kategori",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Jenis",
+              "displayName": "Jenis",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Harga",
+              "displayName": "Harga",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1760,
+        -80
+      ],
+      "id": "8da676f3-f9c9-406e-914e-df7c366f1041",
+      "name": "Append row in sheet",
+      "credentials": {
+        "googleApi": {
+          "id": "sfup3Y80EK98iBe1",
+          "name": "Google Service Account account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        2304,
+        -240
+      ],
+      "id": "7b0fdb24-1ad0-4603-9a71-d609beff3819",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "JCFRMSg3rnbRKJat",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "llama-3.1-8b-instant",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        2080,
+        -560
+      ],
+      "id": "297ccfd9-6835-40ae-802e-65cad13f1a93",
+      "name": "Groq Chat Model",
+      "credentials": {
+        "groqApi": {
+          "id": "R9y14od55mUrDNuR",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $(\"HTTP Request3\").isExecuted ? ($(\"HTTP Request3\").first().json.ParsedResults?.[0]?.ParsedText || \"Teks tidak terbaca dari gambar\") : ($node[\"Telegram Trigger\"].json.message?.text || $node[\"Telegram Trigger\"].json.message?.caption || \"Ekstrak data dari input ini\") }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "=IDENTITAS & PERAN Kamu adalah Financial Intelligence Analyst yang diciptakan oleh Bintang. Tugasmu adalah membantu {{ $node[\"Telegram Trigger\"].json.message.from.first_name }} mengelola keuangan dengan presisi tinggi.\n\nPROTOKOL ANALISIS DATA (STRICT ANTI-0)\n\nAudit Memori & Pewarisan Harga: Jika user merevisi item (Contoh: \"Ganti Bakso jadi Mie Ayam\"), maka Mie Ayam secara otomatis MEWARISI harga Bakso dari memori, kecuali user menyebutkan harga baru.\n\nDilarang Keras Harga 0: Mengisi \"Harga\": 0 atau null pada aksi update adalah kegagalan sistem yang fatal. Jika item target ditemukan di memori, gunakan harga tersebut.\n\nSanitasi VN & OCR: Hasil transkrip VN mungkin kurang rapi, kamu harus cerdas menangkap maksud user (misal: \"ubah\" atau \"ganti\" berarti aksi update).\n\nPajak & Biaya Tambahan: Jika ditemukan Pajak (PB1/VAT), Biaya Layanan, atau Ongkir pada struk/foto, kamu WAJIB memasukkannya sebagai item baru dalam JSON dengan kategori \"Lainnya\" dan jenis \"Pengeluaran\".\n\nKategorisasi: [Makanan, Pakaian, Transportasi, Hiburan, Belanja, Medis, Lainnya].\n\nLOGIKA AKSI (JSON STRATEGY)\n\ninsert: Data baru.\n\nupdate: User mengubah detail (Ganti/Ubah/Harusnya). Isi update_target dengan nama item yang salah.\n\ndelete: Menghapus catatan. Isi update_target dengan nama item yang ingin dibuang.\n\nFORMAT OUTPUT JSON Berikan respon JSON Array yang valid dalam pesanmu:\n\nJSON\n\n[\n  {\n    \"aksi\": \"insert / update / delete\",\n    \"Keterangan\": \"Nama Barang Baru\",\n    \"Harga\": 15000,\n    \"Kategori\": \"Kategori\",\n    \"Jenis\": \"Pengeluaran / Pemasukan\",\n    \"update_target\": \"Nama Item Lama\"\n  }\n]\nPROTOKOL KOMUNIKASI\n\nSapaan: Balas hangat kepada {{ $node[\"Telegram Trigger\"].json.message.from.first_name }}. Berikan link sheet: https://docs.google.com/spreadsheets/d/{{ $node[\"Get a row\"].json[\"spreadsheet_id\"] }}.\n\nMode Mentor: Jika user curhat, berikan motivasi bahwa setiap catatan adalah langkah menuju kebebasan finansial.",
+          "passthroughBinaryImages": true
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        2400,
+        -464
+      ],
+      "id": "ef637c6d-de90-48a0-99b9-72eac7366d89",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "sheet_data",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        1296,
+        -128
+      ],
+      "id": "a8cebc40-58c6-4b6b-8a3f-dcc2dba9e48f",
+      "name": "Split Out"
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "fileId": "={{ $node[\"Telegram Trigger\"].json.message.photo.reverse()[0].file_id }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1472,
+        -400
+      ],
+      "id": "5f0c8864-98f6-4495-a5f5-43858743b881",
+      "name": "Get a file",
+      "webhookId": "fa74afb9-668f-4919-b91a-ce6e4643880a",
+      "credentials": {
+        "telegramApi": {
+          "id": "bfmnvC26T7nYafSH",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://api.telegram.org/file/bot8532802028:AAGnCXUNddOgTyjE-JqehDPB4Jxivg11nN4/{{ $json.result.file_path }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1696,
+        -400
+      ],
+      "id": "09c18a81-ecc4-4adb-9fda-cd97b339654a",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "7b64878b-d40b-4205-ba5b-e331389704f3",
+                    "leftValue": "={{ !!$node[\"Telegram Trigger\"].json.message.voice }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "c591dbec-5f98-445d-9b17-a57ba44a5a46",
+                    "leftValue": "={{ !$node[\"Telegram Trigger\"].json.message.voice && !$node[\"Telegram Trigger\"].json.message.photo }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ !!$node[\"Telegram Trigger\"].json.message.photo }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    },
+                    "id": "257b6ba5-ae05-4c59-9d7a-3ea1f092b707"
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1200,
+        -688
+      ],
+      "id": "5f88ef9b-8bd9-4902-9575-bc410bbc27c5",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "fileId": "={{ $node[\"Telegram Trigger\"].json.message.voice.file_id }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1456,
+        -912
+      ],
+      "id": "b53bce24-7963-4995-b423-685d0869d17c",
+      "name": "Get a file1",
+      "webhookId": "a47174a0-6ed9-47b4-9c76-a56ad2475349",
+      "credentials": {
+        "telegramApi": {
+          "id": "bfmnvC26T7nYafSH",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.groq.com/openai/v1/audio/transcriptions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "data"
+            },
+            {
+              "name": "model",
+              "value": "whisper-large-v3"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2128,
+        -912
+      ],
+      "id": "2bdfac2c-e382-4f26-a08f-5788c1c951dd",
+      "name": "HTTP Request1",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "FuR9sinJOw3vOrts",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://api.telegram.org/file/bot8532802028:AAGnCXUNddOgTyjE-JqehDPB4Jxivg11nN4/{{ $json.result.file_path }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1680,
+        -912
+      ],
+      "id": "87fbbcd0-d59a-4e0f-8d3e-2371d60a7017",
+      "name": "HTTP Request2"
+    },
+    {
+      "parameters": {
+        "jsCode": "for (const item of $input.all()) {\n  if (item.binary && item.binary.data) {\n    item.binary.data.fileName = 'suara.ogg';\n    item.binary.data.mimeType = 'audio/ogg';\n  }\n}\nreturn $input.all();"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1904,
+        -912
+      ],
+      "id": "2a7f5931-c4e3-4136-a8f2-af1abfb1e18f",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Mengambil item pertama yang masuk\nconst item = $input.first();\n\n// Cek apakah ada data binary yang masuk\nif (!item.binary || Object.keys(item.binary).length === 0) {\n  throw new Error(\"Tidak ada file gambar yang diterima dari node sebelumnya!\");\n}\n\n// Ambil key binary pertama (biasanya 'data')\nconst firstBinaryKey = Object.keys(item.binary)[0];\nconst binaryData = item.binary[firstBinaryKey]; \n\n// Memberi nama file & tipe agar API OCR tidak bingung\nbinaryData.fileName = \"struk.png\";\nbinaryData.fileExtension = \"png\";\nbinaryData.mimeType = \"image/png\";\n\n// Kembalikan dalam format yang dikenali n8n\nreturn {\n  json: item.json, // Pertahankan data JSON lama jika ada\n  binary: {\n    data: binaryData // Memastikan property binary bernama 'data'\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1920,
+        -400
+      ],
+      "id": "c51f501e-5b23-4b9f-9e27-539daa599086",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.ocr.space/parse/image",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "data"
+            },
+            {
+              "name": "OCREngine",
+              "value": "2"
+            },
+            {
+              "name": "istable",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2128,
+        -400
+      ],
+      "id": "41495bda-2103-40b0-b6b4-5e774aaeaaee",
+      "name": "HTTP Request3",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "q0YP3HMxFk774njZ",
+          "name": "Header Auth account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "6302cb83-cd69-436c-ae9a-d95db48ee1ce",
+              "leftValue": "={{ $json.sheet_data.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1056,
+        -112
+      ],
+      "id": "5b2df19f-68af-43d4-9d6f-b556b2b92338",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $node[\"Get a row\"].json[\"spreadsheet_id\"] }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1LVElxMSeWXDMHqs1ACHybvaV_ceuBmVSYp9yCq_ntOo/edit#gid=0"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "Keterangan",
+              "lookupValue": "={{ $json.update_target }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1648,
+        -224
+      ],
+      "id": "5c9f41f2-ace9-4f1f-96fb-d3c4c76c885c",
+      "name": "Get row(s) in sheet",
+      "credentials": {
+        "googleApi": {
+          "id": "sfup3Y80EK98iBe1",
+          "name": "Google Service Account account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $node[\"Get a row\"].json[\"spreadsheet_id\"] }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1LVElxMSeWXDMHqs1ACHybvaV_ceuBmVSYp9yCq_ntOo/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Tanggal": "={{ $('Split Out').item.json.tanggal }}",
+            "Waktu": "={{ $('Split Out').item.json.waktu }}",
+            "Keterangan": "={{ $('Split Out').item.json.keterangan }}",
+            "Kategori": "={{ $('Split Out').item.json.kategori }}",
+            "Jenis": "={{ $('Split Out').item.json.jenis }}",
+            "Harga": "={{ $('Split Out').item.json.harga }}",
+            "row_number": "={{ $node[\"Get row(s) in sheet\"].json[\"row_number\"] }}"
+          },
+          "matchingColumns": [
+            "row_number"
+          ],
+          "schema": [
+            {
+              "id": "No",
+              "displayName": "No",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Tanggal",
+              "displayName": "Tanggal",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Waktu",
+              "displayName": "Waktu",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Keterangan",
+              "displayName": "Keterangan",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Kategori",
+              "displayName": "Kategori",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Jenis",
+              "displayName": "Jenis",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Harga",
+              "displayName": "Harga",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1920,
+        -224
+      ],
+      "id": "e454a976-583f-4182-ae1d-662e60363316",
+      "name": "Update row in sheet",
+      "credentials": {
+        "googleApi": {
+          "id": "sfup3Y80EK98iBe1",
+          "name": "Google Service Account account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $(\"HTTP Request3\").isExecuted ? ($(\"HTTP Request3\").first().json.ParsedResults?.[0]?.ParsedText || \"Teks tidak terbaca dari gambar\") : ($(\"HTTP Request1\").isExecuted ? ($(\"HTTP Request1\").first().json.text || \"Gagal membaca VN\") : ($node[\"Telegram Trigger\"].json.message?.text || $node[\"Telegram Trigger\"].json.message?.caption || \"Ekstrak data dari input ini\")) }}",
+        "hasOutputParser": true,
+        "needsFallback": true,
+        "options": {
+          "systemMessage": "=IDENTITAS & PERAN Kamu adalah Financial Intelligence Analyst yang diciptakan oleh Noxvanta. Tugasmu adalah membantu {{ $node[\"Telegram Trigger\"].json.message.from.first_name }} mengelola keuangan dengan presisi tinggi.\n\nPROTOKOL ANALISIS DATA (STRICT ANTI-0)\n\nAudit Memori & Pewarisan Harga: Jika user merevisi item (Contoh: \"Ganti Bakso jadi Mie Ayam\"), maka Mie Ayam secara otomatis MEWARISI harga Bakso dari memori, kecuali user menyebutkan harga baru.\n\nDilarang Keras Harga 0: Mengisi \"Harga\": 0 atau null pada aksi update adalah kegagalan sistem yang fatal. Jika item target ditemukan di memori, gunakan harga tersebut.\n\nSanitasi VN & OCR: Hasil transkrip VN mungkin kurang rapi, kamu harus cerdas menangkap maksud user (misal: \"ubah\" atau \"ganti\" berarti aksi update).\n\nKategorisasi: [Makanan, Pakaian, Transportasi, Hiburan, Belanja, Medis, Lainnya].\n\nLOGIKA AKSI (JSON STRATEGY)\n\ninsert: Data baru.\n\nupdate: User mengubah detail (Ganti/Ubah/Harusnya). Isi update_target dengan nama item yang salah.\n\ndelete: Menghapus catatan. Isi update_target dengan nama item yang ingin dibuang.\n\nATURAN RANTAI REVISI: Jika user mengubah barang yang baru saja diubah (Contoh: Baju $\\rightarrow$ Celana $\\rightarrow$ Topi), kamu WAJIB langsung melakukan aksi update menggunakan nama barang paling terakhir sebagai update_target.DILARANG bertanya atau memberikan teks konfirmasi tanpa JSON. Setiap perintah perubahan harus menghasilkan JSON, meskipun itu perubahan beruntun pada baris yang sama.\n\nFORMAT OUTPUT JSON Berikan respon JSON Array yang valid dalam pesanmu:\n\nJSON\n\n[\n  {\n    \"aksi\": \"insert / update / delete\",\n    \"Keterangan\": \"Nama Barang Baru\",\n    \"Harga\": 15000,\n    \"Kategori\": \"Kategori\",\n    \"Jenis\": \"Pengeluaran / Pemasukan\",\n    \"update_target\": \"Nama Item Lama\"\n  }\n]\nPROTOKOL KOMUNIKASI\n\nSapaan: Balas hangat kepada {{ $node[\"Telegram Trigger\"].json.message.from.first_name }}. Berikan link sheet: https://docs.google.com/spreadsheets/d/{{ $node[\"Get a row\"].json[\"spreadsheet_id\"] }}.\n\nMode Mentor: Jika user curhat, berikan motivasi bahwa setiap catatan adalah langkah menuju kebebasan finansial.",
+          "passthroughBinaryImages": true
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        2352,
+        -672
+      ],
+      "id": "7727b75b-b3a8-44e0-8762-9e1e46138448",
+      "name": "AI Agent1",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "tableId": "user_configs",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "telegram_id",
+              "keyValue": "={{ $json.message.from.id }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        832,
+        -752
+      ],
+      "id": "bf1cb813-a006-4b76-952e-7abdeb15556a",
+      "name": "Get a row",
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "9FnIkbiP7g8zoFPX",
+          "name": "Supabase account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "eb5e38ea-149f-4544-bbfc-b3c03fd02122",
+              "leftValue": "={{ $json.spreadsheet_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        640,
+        -512
+      ],
+      "id": "01437995-6598-4aca-8f51-75da2b773e40",
+      "name": "If2"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "7f129163-6ce1-4a1e-950c-72b52a231c4f",
+              "leftValue": "={{ $('Telegram Trigger').item.json.message.text }}",
+              "rightValue": ".*docs\\.google\\.com\\/spreadsheets\\/d\\/([a-zA-Z0-9-_]+).*|^[a-zA-Z0-9-_]{40,50}$",
+              "operator": {
+                "type": "string",
+                "operation": "regex"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        720,
+        -288
+      ],
+      "id": "eaa4c671-b876-49d9-a02a-8253ed825ce5",
+      "name": "If3"
+    },
+    {
+      "parameters": {
+        "tableId": "user_configs",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "telegram_id",
+              "fieldValue": "={{ $node[\"Telegram Trigger\"].json.message.from.id }}"
+            },
+            {
+              "fieldId": "spreadsheet_id",
+              "fieldValue": "={{ $json.spreadsheet_id }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1040,
+        -448
+      ],
+      "id": "fdf6b122-df3e-4cb1-89b0-5536e8a49180",
+      "name": "Create a row",
+      "credentials": {
+        "supabaseApi": {
+          "id": "9FnIkbiP7g8zoFPX",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "let text = $node[\"Telegram Trigger\"].json.message.text;\n// Mencoba mengambil ID dari URL\nlet match = text.match(/\\/d\\/([a-zA-Z0-9-_]+)/);\nlet finalId = match ? match[1] : text;\n\nreturn {\n  spreadsheet_id: finalId\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        864,
+        -448
+      ],
+      "id": "32223e58-9c0a-4f46-abc2-2fca823136a2",
+      "name": "Code in JavaScript3"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').item.json.message.chat.id }}",
+        "text": "✅ Pendaftaran Berhasil!  \nAkun kamu dan Google Sheet kamu sudah terhubung. Sekarang, silakan kirim foto struk atau ketik catatan keuanganmu (contoh: 'makan siang 50rb'), dan saya akan langsung mencatatnya!",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1200,
+        -448
+      ],
+      "id": "81212845-c844-4acf-87be-59bdfcb45b75",
+      "name": "Send a text message1",
+      "webhookId": "c5268be4-c79f-4fca-bb58-0d0488d6e378",
+      "credentials": {
+        "telegramApi": {
+          "id": "bfmnvC26T7nYafSH",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').item.json.message.chat.id }}",
+        "text": "⚠️ <b>Pendaftaran Akun</b> ⚠️\n\nAgar saya bisa mencatat keuanganmu, ikuti 3 langkah mudah ini:\n\n1️⃣ <b>Buat Salinan</b>: Klik link ini untuk membuat salinan Google Sheet pribadimu: https://docs.google.com/spreadsheets/d/14OMn54bY0Ts7VJjlX6mnWJvD_zXuQUV7Bmvb9toTJgE/copy\n\n2️⃣ <b>Beri Akses</b>: Klik tombol Bagikan (Share) di pojok kanan atas Sheet tersebut, lalu tambahkan email ini sebagai <b>Editor</b>: <a href=\"mailto:bot-keuangan-user@n8n-keuangan-481603.iam.gserviceaccount.com\">bot-keuangan-user@n8n-keuangan-481603.iam.gserviceaccount.com</a>\n\n3️⃣ <b>Kirim Link</b>: Copy seluruh Link/URL Google Sheet kamu dari browser (contoh: https://docs.google.com/spreadsheets/d/xxx/edit) dan kirimkan ke sini.\n\nTenang, biar saya yang urus pengambilan ID-nya secara otomatis! 🤖",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        944,
+        -272
+      ],
+      "id": "73ca1a46-9432-42e1-8bf8-9141a08bc4fc",
+      "name": "Send a text message2",
+      "webhookId": "3eb694eb-cbfe-46cb-9218-d88d7fd323cf",
+      "credentials": {
+        "telegramApi": {
+          "id": "bfmnvC26T7nYafSH",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "f6e02ebe-d538-4b88-8b04-89784319786a",
+                    "leftValue": "={{ $json.aksi }}",
+                    "rightValue": "update",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.aksi }}",
+                    "rightValue": "insert",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "eab6a68e-7f91-4cfc-9fbf-4452b4aa3efa"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "a7769444-6160-40b1-adf5-135a90d474b7",
+                    "leftValue": "={{ $json.aksi }}",
+                    "rightValue": "=delete",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1488,
+        -128
+      ],
+      "id": "5b7093ba-53af-46dd-a10d-ed147f721789",
+      "name": "Switch1"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $node[\"Get a row\"].json[\"spreadsheet_id\"] }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1LVElxMSeWXDMHqs1ACHybvaV_ceuBmVSYp9yCq_ntOo/edit#gid=0"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "Keterangan",
+              "lookupValue": "={{ $json.update_target }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1648,
+        64
+      ],
+      "id": "8188eb6f-987a-4288-800a-f73370dc3b72",
+      "name": "Get row(s) in sheet1",
+      "credentials": {
+        "googleApi": {
+          "id": "sfup3Y80EK98iBe1",
+          "name": "Google Service Account account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "delete",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $node[\"Get a row\"].json[\"spreadsheet_id\"] }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1vH4UYT8efsJ6gFgPhBqo8qvwDcDjAnsM9Q7ShBmcO4I/edit#gid=0"
+        },
+        "startIndex": "={{ $json.row_number }}"
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1920,
+        64
+      ],
+      "id": "63e3ebbd-ed61-492b-a4a4-56b94ddad898",
+      "name": "Delete rows or columns from sheet",
+      "credentials": {
+        "googleApi": {
+          "id": "sfup3Y80EK98iBe1",
+          "name": "Google Service Account account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        2240,
+        -544
+      ],
+      "id": "dac27787-282c-4859-bca2-4fe631139868",
+      "name": "Google Gemini Chat Model1",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "JCFRMSg3rnbRKJat",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Telegram Trigger').first().json.message.chat.id }}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        2448,
+        -208
+      ],
+      "id": "c1e86084-d647-4df8-8d96-a2b2a13563cf",
+      "name": "Simple Memory"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get a row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a text message": {
+      "main": [
+        []
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out": {
+      "main": [
+        [
+          {
+            "node": "Switch1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get a file": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Get a file1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AI Agent1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get a file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get a file1": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request2": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request1": {
+      "main": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript2": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request3": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Split Out",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet": {
+      "main": [
+        [
+          {
+            "node": "Update row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get a row": {
+      "main": [
+        [
+          {
+            "node": "If2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If2": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If3": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript3",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send a text message2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create a row": {
+      "main": [
+        [
+          {
+            "node": "Send a text message1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript3": {
+      "main": [
+        [
+          {
+            "node": "Create a row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a text message1": {
+      "main": [
+        []
+      ]
+    },
+    "Switch1": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get row(s) in sheet1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet1": {
+      "main": [
+        [
+          {
+            "node": "Delete rows or columns from sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_languageModel",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          },
+          {
+            "node": "AI Agent1",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "ca4a8859-6d30-476d-9c43-a4c0daab3ecf",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "89054109cc0b972138046933028ede2a00605a948d0b9519141c97eb18bc0585"
+  },
+  "id": "wUVrFb4MlLjjBdAo",
+  "tags": []
+}
